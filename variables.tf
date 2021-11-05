@@ -16,6 +16,11 @@ variable "auto_accept_shared_attachments" {
   description = "Whether resource attachment requests are automatically accepted. Valid values: `disable`, `enable`. Default value: `disable`"
 }
 
+variable "use_default_route_table" {
+  type = bool
+  default = false
+  description = "Don't create a new route table, rely on the default"
+}
 variable "default_route_table_association" {
   type        = string
   default     = "disable"

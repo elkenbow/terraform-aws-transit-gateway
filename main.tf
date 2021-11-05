@@ -3,7 +3,8 @@ locals {
     module.this.enabled && var.create_transit_gateway ? aws_ec2_transit_gateway.default[0].id : null
   )
   transit_gateway_route_table_id = var.existing_transit_gateway_route_table_id != null && var.existing_transit_gateway_route_table_id != "" ? var.existing_transit_gateway_route_table_id : (
-    module.this.enabled && var.create_transit_gateway_route_table ? aws_ec2_transit_gateway_route_table.default[0].id : null
+    var.use_default_route_table ? data.aws_ec2_transit_gateway.this[0].association_default_route_table_id :
+    (module.this.enabled && var.create_transit_gateway_route_table ? aws_ec2_transit_gateway_route_table.default[0].id : null)
   )
   # NOTE: This is the same logic as local.transit_gateway_id but we cannot reuse that local in the data source or
   # we get the dreaded error: "count" value depends on resource attributes
@@ -22,7 +23,7 @@ resource "aws_ec2_transit_gateway" "default" {
 }
 
 resource "aws_ec2_transit_gateway_route_table" "default" {
-  count              = module.this.enabled && var.create_transit_gateway_route_table ? 1 : 0
+  count              = module.this.enabled && var.create_transit_gateway_route_table && ! var.use_default_route_table ? 1 : 0
   transit_gateway_id = local.transit_gateway_id
   tags               = module.this.tags
 }
@@ -55,6 +56,13 @@ resource "aws_ec2_transit_gateway_vpc_attachment" "default" {
   # https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ec2_transit_gateway_vpc_attachment
   transit_gateway_default_route_table_association = data.aws_ec2_transit_gateway.this[0].owner_id == data.aws_vpc.default[each.key].owner_id ? false : null
   transit_gateway_default_route_table_propagation = data.aws_ec2_transit_gateway.this[0].owner_id == data.aws_vpc.default[each.key].owner_id ? false : null
+
+  lifecycle {
+    ignore_changes = [
+      transit_gateway_default_route_table_association,
+      transit_gateway_default_route_table_propagation
+    ]
+  }
 }
 
 # Allow traffic from the VPC attachments to the Transit Gateway
@@ -83,7 +91,7 @@ module "transit_gateway_route" {
   transit_gateway_route_table_id = local.transit_gateway_route_table_id
   route_config                   = each.value["static_routes"] != null ? each.value["static_routes"] : []
 
-  depends_on = [aws_ec2_transit_gateway_vpc_attachment.default, aws_ec2_transit_gateway_route_table.default]
+  depends_on = [aws_ec2_transit_gateway_vpc_attachment.default, data.aws_ec2_transit_gateway.this]
 }
 
 # Create routes in the subnets' route tables to route traffic from subnets to the Transit Gateway VPC attachments
